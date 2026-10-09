@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADA DeFi Tracker</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e3e2dd;
+    --accent: #2f6fdb; --accent2: #c2410c; --baseline: #8a8a84;
+    --good: #15803d; --bad: #b91c1c; --neutral: #a16207;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1e1e1c; --text: #ecebe6; --muted: #a3a29b; --border: #33332f;
+      --accent: #6aa0ff; --accent2: #fb923c; --baseline: #8f8e87;
+      --good: #4ade80; --bad: #f87171; --neutral: #facc15;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .scenario { margin: 20px 0; border-left: 6px solid var(--neutral); }
+  .scenario[data-id="2"] { border-left-color: var(--good); }
+  .scenario[data-id="3"] { border-left-color: var(--bad); }
+  .scenario h2 { font-size: 1.2rem; }
+  .checks { list-style: none; padding: 0; margin: 12px 0 0; }
+  .checks li::before { content: "✗ "; color: var(--bad); font-weight: 700; }
+  .checks li.ok::before { content: "✓ "; color: var(--good); }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+  @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpi .value { font-size: 1.4rem; font-weight: 650; }
+  .delta.up { color: var(--good); } .delta.down { color: var(--bad); }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 16px; }
+  .chart-box { position: relative; height: 300px; }
+  footer { margin-top: 28px; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>ADA DeFi Tracker</h1>
+    <div class="muted" id="updated">Đang tải dữ liệu…</div>
+  </header>
+
+  <section class="card scenario" id="scenario" aria-live="polite"></section>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="charts">
+    <div class="card"><h2>TVL Cardano tính bằng ADA</h2><div class="chart-box"><canvas id="chart-tvl"></canvas></div></div>
+    <div class="card"><h2>Stablecoin trên Cardano (USD)</h2><div class="chart-box"><canvas id="chart-stable"></canvas></div></div>
+    <div class="card"><h2>TVL Cardano (USD) và giá ADA</h2><div class="chart-box"><canvas id="chart-usd"></canvas></div></div>
+    <div class="card"><h2>USDRF: tổng cung và độ tập trung</h2><div class="chart-box"><canvas id="chart-usdrf"></canvas></div></div>
+  </section>
+
+  <footer class="muted">
+    Nguồn: DefiLlama (TVL, stablecoin, giá ADA) và Koios (USDRF on-chain). Đường nét đứt là mốc trong podcast #3664
+    (đầu tháng 10/2026). Các tuần trước khi có script chạy hàng tuần được dựng lại từ lịch sử của DefiLlama; USDRF không có lịch sử.
+    Không phải khuyến nghị đầu tư.
+  </footer>
+</main>
+
+<script src="../data/snapshots.js"></script>
+<script src="scenario.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = window.SNAPSHOTS || [];
+  var B = Scenario.BASELINE;
+  var CHECKPOINT = new Date('2026-12-07T00:00:00Z');
+
+  if (!data.length) {
+    document.getElementById('updated').innerHTML = '<span class="error">Chưa có dữ liệu. Chạy <code>node scripts/collect.mjs</code>.</span>';
+    return;
+  }
+
+  var latest = data[data.length - 1];
+  var fmtNum = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 });
+  function millions(v) { return v == null ? '—' : fmtNum.format(v / 1e6) + ' tr'; }
+  function pct(v) { return v == null ? '—' : fmtNum.format(v) + '%'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function delta(v, base, invert) {
+    if (v == null) return '';
+    var d = (v / base - 1) * 100;
+    var good = invert ? d < 0 : d > 0;
+    return '<span class="delta ' + (good ? 'up' : 'down') + '">' + (d > 0 ? '+' : '') + fmtNum.format(d) + '% so với mốc</span>';
+  }
+
+  // Header
+  var days = Math.ceil((CHECKPOINT - new Date()) / 86400000);
+  document.getElementById('updated').textContent =
+    'Cập nhật: ' + new Date(latest.date).toLocaleString('vi-VN') + ' (tuần ' + latest.week + '). ' +
+    (days > 0 ? 'Còn ' + days + ' ngày đến mốc kiểm tra 07/12/2026.' : 'Đã qua mốc kiểm tra 07/12/2026.');
+
+  // Scenario
+  var sc = Scenario.classify(latest);
+  var el = document.getElementById('scenario');
+  el.dataset.id = sc.id;
+  el.innerHTML = '<h2>' + esc(sc.title) + '</h2><div>' + esc(sc.detail) + '</div><ul class="checks">' +
+    sc.checks.map(function (c) { return '<li class="' + (c.ok ? 'ok' : '') + '">' + esc(c.label) + '</li>'; }).join('') + '</ul>';
+
+  // KPIs
+  var kpis = [
+    ['TVL (ADA)', millions(latest.tvlAda) + ' ADA', delta(latest.tvlAda, B.tvlAda)],
+    ['Stablecoin', millions(latest.stablecoinsUsd) + ' USD', delta(latest.stablecoinsUsd, B.stablecoinsUsd)],
+    ['USDRF tổng cung', millions(latest.usdrfSupply), delta(latest.usdrfSupply, B.usdrfSupply)],
+    ['USDRF top 5 ví', pct(latest.usdrfTop5Share), latest.usdrfHolders != null ? '<span class="muted">' + latest.usdrfHolders + ' ví nắm giữ</span>' : ''],
+    ['TVL (USD)', millions(latest.tvlUsd) + ' USD', ''],
+    ['Giá ADA', latest.adaPrice.toFixed(4) + ' USD', ''],
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(function (k) {
+    return '<div class="card kpi"><div class="muted">' + k[0] + '</div><div class="value">' + k[1] + '</div><div>' + k[2] + '</div></div>';
+  }).join('');
+
+  // Charts
+  if (!window.Chart) {
+    document.querySelector('.charts').innerHTML = '<p class="error">Không tải được Chart.js (cần mạng để vẽ biểu đồ).</p>';
+    return;
+  }
+  var css = getComputedStyle(document.documentElement);
+  function c(name) { return css.getPropertyValue(name).trim(); }
+  Chart.defaults.color = c('--muted');
+  Chart.defaults.borderColor = c('--border');
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  var labels = data.map(function (s) { return s.week; });
+  function series(key, scale) { return data.map(function (s) { return s[key] == null ? null : s[key] / (scale || 1); }); }
+  function flat(v) { return data.map(function () { return v; }); }
+  function line(label, values, color, extra) {
+    return Object.assign({ label: label, data: values, borderColor: color, backgroundColor: color,
+      pointRadius: 0, pointHitRadius: 8, borderWidth: 2, tension: 0.2, spanGaps: false }, extra || {});
+  }
+  function baseline(label, value) {
+    return line(label, flat(value), c('--baseline'), { borderDash: [6, 4], borderWidth: 1.5 });
+  }
+  function opts(yTitle, extraScales) {
+    return {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 12 } }, tooltip: { callbacks: {
+        label: function (ctx) { return ctx.dataset.label + ': ' + (ctx.parsed.y == null ? '—' : fmtNum.format(ctx.parsed.y)); } } } },
+      scales: Object.assign({ x: { ticks: { maxTicksLimit: 8 } }, y: { title: { display: true, text: yTitle } } }, extraScales || {}),
+    };
+  }
+
+  new Chart(document.getElementById('chart-tvl'), { type: 'line', data: { labels: labels, datasets: [
+    line('TVL (triệu ADA)', series('tvlAda', 1e6), c('--accent')),
+    baseline('Mốc 278 triệu ADA', B.tvlAda / 1e6),
+  ] }, options: opts('triệu ADA') });
+
+  new Chart(document.getElementById('chart-stable'), { type: 'line', data: { labels: labels, datasets: [
+    line('Stablecoin (triệu USD)', series('stablecoinsUsd', 1e6), c('--accent')),
+    baseline('Mốc 67,33 triệu USD', B.stablecoinsUsd / 1e6),
+  ] }, options: opts('triệu USD') });
+
+  new Chart(document.getElementById('chart-usd'), { type: 'line', data: { labels: labels, datasets: [
+    line('TVL (triệu USD)', series('tvlUsd', 1e6), c('--accent'), { yAxisID: 'y' }),
+    line('Giá ADA (USD)', series('adaPrice'), c('--accent2'), { yAxisID: 'y1' }),
+  ] }, options: opts('triệu USD', { y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'USD / ADA' } } }) });
+
+  // USDRF has no history before the live collector, so only plot weeks that have it.
+  var usdrf = data.filter(function (s) { return s.usdrfSupply != null; });
+  new Chart(document.getElementById('chart-usdrf'), { type: 'line', data: {
+    labels: usdrf.map(function (s) { return s.week; }), datasets: [
+      line('USDRF (triệu)', usdrf.map(function (s) { return s.usdrfSupply / 1e6; }), c('--accent'), { yAxisID: 'y', pointRadius: 3 }),
+      line('Mốc 5,1 triệu USDRF', usdrf.map(function () { return B.usdrfSupply / 1e6; }), c('--baseline'), { yAxisID: 'y', borderDash: [6, 4], borderWidth: 1.5 }),
+      line('sUSDrf (triệu)', usdrf.map(function (s) { return s.susdrfSupply / 1e6; }), c('--good'), { yAxisID: 'y', pointRadius: 3 }),
+      line('Top 5 ví (%)', usdrf.map(function (s) { return s.usdrfTop5Share; }), c('--accent2'), { yAxisID: 'y1', pointRadius: 3, borderDash: [2, 3] }),
+    ] }, options: opts('triệu token', { y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: '% nguồn cung' } } }) });
+})();
+</script>
+</body>
+</html>

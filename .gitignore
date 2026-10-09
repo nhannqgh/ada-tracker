@@ -1,0 +1,9 @@
+# Source podcast material (copyrighted, not ours to publish)
+*.mp3
+transcripts.md
+plans/reports/
+
+# Local
+.DS_Store
+node_modules/
+data/*.tmp

@@ -1,0 +1,38 @@
+name: Weekly snapshot
+
+on:
+  schedule:
+    - cron: '0 2 * * 1' # Monday 02:00 UTC (09:00 Asia/Saigon)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-snapshot
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main # a queued run must build on the latest data, not the commit it was triggered at
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test "tests/**/*.test.mjs"
+      - run: node scripts/collect.mjs
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "chore(data): weekly snapshot $(date -u +%G-W%V)"
+            git pull --rebase origin main
+            git push
+          fi
