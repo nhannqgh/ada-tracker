@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: completed
 created: 2026-10-09
 ---
 
@@ -66,5 +66,5 @@ Dùng biên ±5% để tránh nhãn nhảy qua lại vì nhiễu.
 - [x] Phase 1: script thu thập (chạy thật, chạy lại trong tuần không tạo bản trùng)
 - [x] Phase 2: backfill (96 tuần)
 - [x] Phase 3: dashboard (desktop, 390px, sáng và tối)
-- [ ] Phase 4: tạo repo GitHub, bật Pages, chạy thử workflow
-- [ ] Phase 5: review và kiểm tra cuối
+- [x] Phase 4: repo nhannqgh/ada-tracker, Pages bật, workflow chạy thử thành công (bot commit kích hoạt Pages build)
+- [x] Phase 5: review xong, đã sửa lỗi High và Medium; còn mục Low chưa làm: SRI cho Chart.js
