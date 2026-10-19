@@ -1272,5 +1272,18 @@
     "usdrfHolders": 84,
     "usdrfTop5Share": 99.90680308343686,
     "tvlAda": 274509303.5763767
+  },
+  {
+    "week": "2026-W43",
+    "date": "2026-10-19T07:24:40.397Z",
+    "source": "live",
+    "adaPrice": 0.2212072181634715,
+    "tvlUsd": 62633266.174256116,
+    "stablecoinsUsd": 70245267.58,
+    "usdrfSupply": 5117165.648528,
+    "susdrfSupply": 2845709.172381,
+    "usdrfHolders": 81,
+    "usdrfTop5Share": 99.9286237847303,
+    "tvlAda": 283142958.4181576
   }
 ]
